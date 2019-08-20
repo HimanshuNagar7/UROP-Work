@@ -156,5 +156,22 @@ deriveRule clause facts
   where
     clause' = substitute clause facts
 
-resolve :: Program -> [Fact] -> Program
-resolve [] _  = []
+isSingleton :: [a] -> Bool
+isSingleton [_] = True
+isSingleton _ = False
+
+resolveOnce :: Program -> [Fact] -> (Program, [Fact])
+resolveOnce [] facts  = ([], facts)
+
+resolveOnce ([fact] : clauses) facts
+  = ([fact] : rules, facts')
+  where
+    (rules, facts') = resolveOnce clauses facts
+
+resolveOnce (clause : clauses) facts
+  | isSingleton rule = (rule : rules, facts')
+  | otherwise        = (rule : rules', facts'')
+  where
+    rule = deriveRule clause facts
+    (rules, facts') = resolveOnce clauses ((head rule) : facts)
+    (rules', facts'') = resolveOnce clauses facts
