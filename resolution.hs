@@ -16,6 +16,8 @@ type Clause = [Boolean]
 
 type LookupTable = [(String, Int)]
 
+type Program = [Clause]
+
 evalExp :: Exp -> Exp
 evalExp (Plus (Num n) (Num n')) = Num (n + n')
 
@@ -153,3 +155,6 @@ deriveRule clause facts
   = filter (\boolean -> not (evalBool facts boolean)) clause'
   where
     clause' = substitute clause facts
+
+resolve :: Program -> [Fact] -> Program
+resolve [] _  = []
