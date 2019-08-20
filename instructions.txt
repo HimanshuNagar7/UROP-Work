@@ -1,0 +1,31 @@
+Running experiment for effect of request count on grounding:
+./requestScript (number of customers) (number of items) (maximum time value) (maximum request count) 
+For values of r (number of requests) between 1 and maximum request count in steps of 1:
+1. Generates a seeded exponential distribution of requests S(r) with parameter (r / maximum time value)
+2. Generates the grounding for the bookstore.lp program with S(r) and outputs the size of the grounding to requestdata.csv
+3. Step 2 is repeated 15 times to reduce effects of noise.
+After the data is generated, I used Jupyter Notebook to plot the results (x axis: r, y axis: length of grounding). Using python file called plotRequestData.py 
+
+
+
+Running experiment for effect of item count on grounding:
+./itemScript (number of customers) (maximum number of items) (maximum time value) (average number of requests in the time span)
+For values of i (number of items) between 1 and maximum number of items in steps of 1:
+1. Generates a seeded exponential distribution of requests S(r) with parameter (average number of requests in the time span / maximum time value)
+2. Generates the grounding for the bookstore.lp program with S(r) and outputs the size of the grounding to itemdata.csv
+3. Step 2 is repeated 15 times to reduce effects of noise.
+After the data is generated, I used Jupyter Notebook to plot the results (x axis: i, y axis: length of grounding) Using python file called plotItemData.py 
+
+
+ 
+Running experiment for effect of request count on solving time:
+./timingScript (number of customers) (number of items) (maximum time value) (maximum request count)
+For values of r (number of requests) between 2 and maximum request count in steps of 2:
+1. Generates a seeded random distribution of r requests S(r)  
+2. Solves the bookstore.lp program with S(r) and outputs the solving time to timeData.csv
+3. Step 2 is repeated 10 times to reduce effects of noise.
+After the data is generated, I used Jupyter Notebook to plot the results (x axis: r, y axis: solving time) Using python file called plotTimeData.py 
+
+
+All scripts modify the events file happensEvents.lp directly. 
+However since all random generations in the scripts are seeded, these events are reproducible.
