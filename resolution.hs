@@ -18,6 +18,9 @@ type LookupTable = [(String, Int)]
 
 type Program = [Clause]
 
+timeWrapper :: String
+timeWrapper = "time"
+
 evalExp :: Exp -> Exp
 evalExp (Plus (Num n) (Num n')) = Num (n + n')
 
@@ -61,25 +64,54 @@ evalBool facts boolean@(Atom _ _) = boolean `elem` facts
 
 evalBool _ boolean = False
 
-processExp :: Exp -> Exp -> LookupTable
-processExp (Num i) (Var v)
+validExps :: Exp -> Exp -> Bool
+validExps (Func str args) (Func str' args')
+  = stringCheck && lengthCheck && argsCheck
+  where
+    stringCheck = (str == str')
+    lengthCheck = ((length args) == (length args))
+    argsCheck = and (zipWith validExps args args')
+
+validExps (Func _ _) _ = False
+
+validExps _ (Func _ _) = False
+
+validExps (Tuple args) (Tuple args')
+  = lengthCheck && argsCheck
+  where
+    lengthCheck = ((length args) == (length args))
+    argsCheck = and (zipWith validExps args args')
+
+validExps (Tuple _) _ = False
+
+validExps _ (Tuple _) = False
+
+validExps _ _ = True
+
+processExp' :: Exp -> Exp -> LookupTable
+processExp' (Num i) (Var v)
   = [(v, i)]
 
-processExp (Tuple exps) (Tuple exps')
-  = concat (zipWith processExp exps exps')
+processExp' (Tuple exps) (Tuple exps')
+  = concat (zipWith processExp' exps exps')
 
-processExp (Func str exps) (Func str' exps')
-  | str == str' = concat (zipWith processExp exps exps')
+processExp' (Func str exps) (Func str' exps')
+  = concat (zipWith processExp' exps exps')
+
+processExp' _ _ = []
+
+processExp :: Exp -> Exp -> LookupTable
+processExp exp1 exp2
+  | validExps exp1 exp2 = processExp' exp1 exp2
   | otherwise = []
-
-processExp _ _ = []
 
 generateLookup :: Fact -> Clause -> LookupTable
 generateLookup _ [] = []
 
 generateLookup fact@(Atom str args) ((Atom str' args') : booleans)
-  | str == str' =  processExp (Tuple args) (Tuple args')
-  | otherwise   =  generateLookup fact booleans
+  | str == timeWrapper = []
+  | str == str'  =  processExp (Tuple args) (Tuple args')
+  | otherwise    =  generateLookup fact booleans
 
 generateLookup fact@(Atom str args) ( _ : booleans)
   =  generateLookup fact booleans
@@ -175,3 +207,29 @@ resolveOnce (clause : clauses) facts
     rule = deriveRule clause facts
     (rules, facts') = resolveOnce clauses ((head rule) : facts)
     (rules', facts'') = resolveOnce clauses facts
+
+resolve :: Program -> [Fact] -> Program
+resolve program facts
+  | (program == program') && (facts == facts') = program
+  | otherwise                                  = resolve program' facts'
+  where
+    (program', facts') = resolveOnce program facts
+
+---------------------------------------------------------------------------------------------------
+
+consequentClause =
+  [Atom "cons" [Num 1, Tuple [Var "T", Var "cust", Var "item"], Var "T", Plus (Var "T1") (Num 1)],
+  Atom "ant" [Num 1, Tuple [Var "T", Var "cust", Var "item"], Var "T"],
+  Atom "happens" [Func "allocate" [Var "cust", Var "item"], Var "T1"],
+  Atom "time" [Var "T1"], L (Var "T") (Var "T1"), L (Var "T1") (Plus (Var "T") (Num 3))]
+
+antecedentClause =
+  [Atom "ant" [Num 1, Tuple [Var "Ts", Var "cust", Var "item"], Var "Ts"],
+  Atom "happens" [Func "request" [Var "cust", Var "item"], Var "Ts"],
+  Atom "time" [Var "Ts"]]
+
+facts =
+  [Atom "happens" [Func "request" [Num 2, Num 1], Num 1],
+  Atom "time" [Num 1], Atom "time" [Num 2], Atom "time" [Num 3]]
+
+program = [consequentClause, antecedentClause]
