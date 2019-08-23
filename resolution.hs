@@ -1,25 +1,79 @@
 import Data.List
 import Data.Maybe
 
-data Exp = Num Int | Var String | Plus Exp Exp | Minus Exp Exp |
+data Exp = Num Int | Const String | Var String | Plus Exp Exp | Minus Exp Exp |
            Mul Exp Exp | Div Exp Exp | Tuple [Exp] | Func String [Exp]
            deriving (Show, Eq)
 
 
 data Boolean = Atom String [Exp] | Equals Exp Exp | G Exp Exp |
-               L Exp Exp | NE Exp Exp | GE Exp Exp | LE Exp Exp
+               L Exp Exp | NE Exp Exp | GE Exp Exp | LE Exp Exp | F
                deriving (Show, Eq)
 
 type Fact = Boolean
 
 type Clause = [Boolean]
 
-type LookupTable = [(String, Int)]
+type LookupTable = [(Exp, Exp)]
 
 type Program = [Clause]
 
 timeWrapper :: String
 timeWrapper = "time"
+
+showExp :: Exp -> String
+showExp (Num int) = show int
+
+showExp (Const c) = c
+
+showExp (Var v) = v
+
+showExp (Plus exp1 exp2) = "(" ++ (showExp exp1) ++ " + " ++ (showExp exp2) ++ ")"
+
+showExp (Minus exp1 exp2) = "(" ++ (showExp exp1) ++ " - " ++ (showExp exp2) ++ ")"
+
+showExp (Mul exp1 exp2) = "(" ++ (showExp exp1) ++ " * " ++ (showExp exp2) ++ ")"
+
+showExp (Div exp1 exp2) = "(" ++ (showExp exp1) ++ " / " ++ (showExp exp2) ++ ")"
+
+showExp (Tuple exps)
+   = "(" ++ (foldl1 (\exp1 exp2 -> exp1 ++ ", " ++ exp2) (map showExp exps)) ++ ")"
+
+showExp (Func str exps)
+   = str ++ (showExp (Tuple exps))
+
+
+showBool :: Boolean -> String
+showBool (Atom str exps) = str ++ (showExp (Tuple exps))
+
+showBool (Equals exp1 exp2) = (showExp exp1) ++ " = " ++ (showExp exp2)
+
+showBool (L exp1 exp2) = (showExp exp1) ++ " < " ++ (showExp exp2)
+
+showBool (G exp1 exp2) = (showExp exp1) ++ " > " ++ (showExp exp2)
+
+showBool (NE exp1 exp2) = (showExp exp1) ++ " != " ++ (showExp exp2)
+
+showBool (LE exp1 exp2) = (showExp exp1) ++ " <= " ++ (showExp exp2)
+
+showBool (GE exp1 exp2) = (showExp exp1) ++ " >= " ++ (showExp exp2)
+
+showBool _ = ""
+
+showClause' :: Clause -> String
+showClause' clause
+  = foldl1 (\bool1 bool2 -> bool1 ++ ", " ++ bool2) (map showBool clause)
+
+showClause :: Clause -> String
+showClause [boolean] = (showBool boolean) ++ "."
+
+showClause (b : bs) = (showBool b) ++ " :- " ++ (showClause' bs) ++ "."
+
+showProg :: Program -> String
+showProg program
+  = foldl1 (\clause1 clause2 -> clause1 ++ "\n" ++ clause2) (map showClause program)
+
+
 
 evalExp :: Exp -> Exp
 evalExp (Plus (Num n) (Num n')) = Num (n + n')
@@ -46,6 +100,8 @@ evalBoolExps (LE exp1 exp2) = LE (evalExp exp1) (evalExp exp2)
 evalBoolExps (GE exp1 exp2) = GE (evalExp exp1) (evalExp exp2)
 
 evalBoolExps (Atom str exps) = Atom str (map evalExp exps)
+
+evalBoolExps boolean = boolean
 
 evalBool :: [Fact] -> Boolean -> Bool
 evalBool _ (Equals (Num n) (Num n')) = n == n'
@@ -90,7 +146,34 @@ validExps _ _ = True
 
 processExp' :: Exp -> Exp -> LookupTable
 processExp' (Num i) (Var v)
-  = [(v, i)]
+  = [(Var v, Num i)]
+
+processExp' (Const c) (Var v)
+  = [(Var v, Const c)]
+
+processExp' (Num i) (Plus (Var v) (Num i'))
+  = [(Var v, Num  (i - i'))]
+
+processExp' (Num i) (Minus (Var v) (Num i'))
+  = [(Var v, Num  (i + i'))]
+
+processExp' (Num i) (Mul (Var v) (Num i'))
+  = [(Var v, Num  (i `div` i'))]
+
+processExp' (Num i) (Div (Var v) (Num i'))
+  = [(Var v, Num  (i * i'))]
+
+processExp' (Num i) (Plus (Num i') (Var v))
+  = [(Var v, Num  (i - i'))]
+
+processExp' (Num i) (Minus (Num i') (Var v))
+  = [(Var v, Num  (i' - i))]
+
+processExp' (Num i) (Mul (Num i') (Var v))
+  = [(Var v, Num  (i `div` i'))]
+
+processExp' (Num i) (Div (Num i') (Var v))
+  = [(Var v, Num  (i' `div` i))]
 
 processExp' (Tuple exps) (Tuple exps')
   = concat (zipWith processExp' exps exps')
@@ -120,10 +203,10 @@ generateLookup _ _ = []
 
 instantiateExp :: LookupTable -> Exp -> Exp
 instantiateExp table (Var v)
-  | isJust value = Num (fromJust value)
+  | isJust value = fromJust value
   | otherwise    = Var v
   where
-    value = lookup v table
+    value = lookup (Var v) table
 
 instantiateExp table (Plus exp1 exp2)
   = Plus (instantiateExp table exp1) (instantiateExp table exp2)
@@ -216,20 +299,51 @@ resolve program facts
     (program', facts') = resolveOnce program facts
 
 ---------------------------------------------------------------------------------------------------
+supportedAllocate =
+  [Atom "supported"[Func "allocate" [Var "Cust", Var "Item", Var "N", Var "T1"], Var "T"],
+  Atom "ant" [Num 1, Tuple [Var "T1", Var "Cust", Var "Item"], Var "T1"],
+  Atom "holds" [Func "available" [Var "Item", Var "N"], Minus (Var "T") (Num 1)],
+  L (Var "T1")  (Var "T"), L (Var "T") (Plus (Var "T1") (Num 3)),
+  Atom "time" [Plus (Var "T") (Num 1)], Atom "number" [Var "N"]]
 
-consequentClause =
-  [Atom "cons" [Num 1, Tuple [Var "T", Var "cust", Var "item"], Var "T", Plus (Var "T1") (Num 1)],
-  Atom "ant" [Num 1, Tuple [Var "T", Var "cust", Var "item"], Var "T"],
-  Atom "happens" [Func "allocate" [Var "cust", Var "item"], Var "T1"],
-  Atom "time" [Var "T1"], L (Var "T") (Var "T1"), L (Var "T1") (Plus (Var "T") (Num 3))]
+supportedApologize =
+  [Atom "supported" [Func "apologize" [Var "Cust", Var "Item"], Var "T"],
+  Atom "ant" [Num 1, Tuple [Var "T1", Var "Cust", Var "Item"], Var "T1"],
+  Equals (Var "T")  (Plus (Var "T1") (Num 4)), Atom "time" [Var "T"]]
+
+supportedProcess =
+  [Atom "supported" [Func "process" [Var "Cust", Var "Item", Var "T1"], Var "T"],
+  Atom "ant" [Num 1, Tuple [Var "T1", Var "Cust", Var "Item"], Var "T1"],
+  L (Var "T1")  (Minus (Var "T") (Num 1)), L (Var "T") (Plus (Var "T1") (Num 4)),
+  Atom "time" [Var "T"],
+  Atom "happens" [Func "allocate" [Var "Cust", Var "Item", Var "N", Var "T1"], Minus (Var "T") (Num 1)]]
+
+consequentClause1 =
+  [Atom "cons" [Num 1, Tuple [Var "T", Var "Cust", Var "Item"], Var "T", Plus (Var "T1") (Num 1)],
+  Atom "ant" [Num 1, Tuple [Var "T", Var "Cust", Var "Item"], Var "T"],
+  Atom "holds" [Func "available" [Var "Item", Var "N"], Minus (Var "T1") (Num 1)],
+  Atom "happens" [Func "allocate" [Var "Cust", Var "Item", Var "N", Var "T"], Var "T1"],
+  Atom "happens" [Func "process" [Var "Cust", Var "Item", Var "T"], Plus (Var "T1") (Num 1)],
+  Atom "time" [Plus (Var "T1") (Num 1)], L (Var "T") (Var "T1"), L (Var "T1") (Plus (Var "T") (Num 3))]
+
+consequentClause2 =
+  [Atom "cons" [Num 1, Tuple [Var "T", Var "Cust", Var "Item"], Var "T", Var "T3"],
+  Atom "ant" [Num 1, Tuple [Var "T", Var "Cust", Var "Item"], Var "T"],
+  Atom "happens" [Func "apologize" [Var "Cust", Var "Item"], Var "T3"],
+  Equals (Var "T3") (Plus (Var "T") (Num 4)), Atom "time" [Var "T3"]]
 
 antecedentClause =
-  [Atom "ant" [Num 1, Tuple [Var "Ts", Var "cust", Var "item"], Var "Ts"],
-  Atom "happens" [Func "request" [Var "cust", Var "item"], Var "Ts"],
+  [Atom "ant" [Num 1, Tuple [Var "Ts", Var "Cust", Var "Item"], Var "Ts"],
+  Atom "happens" [Func "request" [Var "Cust", Var "Item"], Var "Ts"],
   Atom "time" [Var "Ts"]]
 
 facts =
-  [Atom "happens" [Func "request" [Num 2, Num 1], Num 1],
+  [Atom "happens" [Func "request" [Const "c2", Const "b1"], Num 1],
   Atom "time" [Num 1], Atom "time" [Num 2], Atom "time" [Num 3]]
 
-program = [consequentClause, antecedentClause]
+program = [supportedAllocate,
+          supportedProcess,
+          supportedApologize,
+          consequentClause1,
+          consequentClause2,
+          antecedentClause]
