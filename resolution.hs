@@ -65,9 +65,15 @@ showClause' clause
   = foldl1 (\bool1 bool2 -> bool1 ++ ", " ++ bool2) (map showBool clause)
 
 showClause :: Clause -> String
+showClause [F] = ":-."
+
 showClause [boolean] = (showBool boolean) ++ "."
 
+showClause (F : bs) = ":- " ++ (showClause' bs) ++ "."
+
 showClause (b : bs) = (showBool b) ++ " :- " ++ (showClause' bs) ++ "."
+
+showClause _ = ""
 
 showProg :: Program -> String
 showProg program
@@ -251,6 +257,8 @@ instantiateBoolean table (GE exp1 exp2)
 instantiateBoolean table (LE exp1 exp2)
   = LE (instantiateExp table exp1) (instantiateExp table exp2)
 
+instantiateBoolean _ F = F
+
 
 instantiate :: LookupTable -> Clause -> Clause
 instantiate table clause = map (instantiateBoolean table) clause
@@ -262,14 +270,20 @@ substituteFact clause fact
     clause' = instantiate table clause
     table = generateLookup fact clause
 
-substitute :: Clause -> [Fact] -> Clause
-substitute clause facts = foldl substituteFact clause facts
+substitute' :: Clause -> [Fact] -> [Clause]
+substitute' clause [] = [clause]
 
-deriveRule :: Clause -> [Fact] -> Clause
-deriveRule clause facts
-  = filter (\boolean -> not (evalBool facts boolean)) clause'
+substitute' clause (fact : facts)
+   = (substitute' clause facts) ++ (substitute' (substituteFact clause fact) facts)
+
+substitute :: Clause -> [Fact] ->  [Clause]
+substitute clause facts = nub (substitute' clause facts)
+
+deriveRules :: Clause -> [Fact] -> [Clause]
+deriveRules clause facts
+  = map (filter (\boolean -> not (evalBool facts boolean))) clauses
   where
-    clause' = substitute clause facts
+    clauses = substitute clause facts
 
 isSingleton :: [a] -> Bool
 isSingleton [_] = True
@@ -284,19 +298,21 @@ resolveOnce ([fact] : clauses) facts
     (rules, facts') = resolveOnce clauses facts
 
 resolveOnce (clause : clauses) facts
-  | isSingleton rule = (rule : rules, facts')
-  | otherwise        = (rule : rules', facts'')
+    = (rules ++ rules', facts')
   where
-    rule = deriveRule clause facts
-    (rules, facts') = resolveOnce clauses ((head rule) : facts)
-    (rules', facts'') = resolveOnce clauses facts
+    rules = deriveRules clause facts
+    newFacts = map head (filter isSingleton rules)
+    (rules', facts') = resolveOnce clauses (nub (newFacts ++ facts))
 
-resolve :: Program -> [Fact] -> Program
-resolve program facts
-  | (program == program') && (facts == facts') = program
-  | otherwise                                  = resolve program' facts'
+resolve' :: Program -> [Fact] -> Program
+resolve' program facts
+  | (and (map (\x -> x `elem` program) program')) && (facts == facts') = program
+  | otherwise = resolve' program' facts'
   where
     (program', facts') = resolveOnce program facts
+
+resolve :: Program -> [Fact] -> Program
+resolve program facts = nub (filter (\x -> not (null x)) (resolve' program facts))
 
 ---------------------------------------------------------------------------------------------------
 supportedAllocate =
@@ -337,13 +353,34 @@ antecedentClause =
   Atom "happens" [Func "request" [Var "Cust", Var "Item"], Var "Ts"],
   Atom "time" [Var "Ts"]]
 
-facts =
+constraint1 =
+  [F,
+  Atom "happens" [Func "allocate" [Var "Cust", Var "Item", Var "N", Var "T1"], Plus (Var "T") (Num 1)],
+  Atom "holds" [Func "available" [Var "Item", Num 0], Var "T"]]
+
+constraint2 =
+  [F,
+  Atom "holds" [Func "available" [Var "Item", Var "N"], Var "T"],
+  Atom "holds" [Func "available" [Var "Item", Var "N1"], Var "T"],
+  L (Var "N") (Var "N1")]
+
+facts1 =
   [Atom "happens" [Func "request" [Const "c2", Const "b1"], Num 1],
-  Atom "time" [Num 1], Atom "time" [Num 2], Atom "time" [Num 3]]
+  Atom "time" [Num 1], Atom "time" [Num 2], Atom "time" [Num 3],
+  Atom "holds" [Func "available" [Const "b1", Num 4], Num 0]]
+
+facts2 =
+  [Atom "happens" [Func "request" [Const "c1", Const "b1"], Num 2],
+  Atom "happens" [Func "allocate" [Const "c2", Const "b1", Num 4, Num 1], Num 2],
+  Atom "time" [Num 2], Atom "time" [Num 3], Atom "time" [Num 4],
+  Atom "holds" [Func "available" [Const "b1", Num 4], Num 1]]
+
 
 program = [supportedAllocate,
           supportedProcess,
           supportedApologize,
           consequentClause1,
           consequentClause2,
-          antecedentClause]
+          antecedentClause,
+          constraint1,
+          constraint2]
