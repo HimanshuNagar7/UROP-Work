@@ -202,15 +202,11 @@ processExp exp1 exp2
 generateEqualityLookup :: Clause -> LookupTable
 generateEqualityLookup [] = []
 
-generateEqualityLookup ((Equals (Var v) (Num n)) : booleans)
-  = (Var v, Num n) : generateEqualityLookup booleans
-
-generateEqualityLookup ((Equals (Var v) (Const c)) : booleans)
-  = (Var v, Const c) : generateEqualityLookup booleans
-
-generateEqualityLookup ((Equals expr (Var v)) : booleans)
-  = generateEqualityLookup ((Equals (Var v) expr) : booleans)
+generateEqualityLookup ((Equals exp1 exp2) : booleans)
+  | not (null (processExp exp1 exp2)) = (processExp exp1 exp2) ++ (generateEqualityLookup booleans)
+  | otherwise                         = (processExp exp2 exp1) ++ (generateEqualityLookup booleans)
   
+
 generateEqualityLookup (_ : booleans)
   = generateEqualityLookup booleans
 
