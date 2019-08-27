@@ -10,6 +10,8 @@ data Boolean = Atom String [Exp] | Equals Exp Exp | G Exp Exp |
                L Exp Exp | NE Exp Exp | GE Exp Exp | LE Exp Exp | F
                deriving (Show, Eq)
 
+data Bool3 = Result Bool | Unknown deriving (Show, Eq)
+
 type Fact = Boolean
 
 type Clause = [Boolean]
@@ -109,22 +111,24 @@ evalBoolExps (Atom str exps) = Atom str (map evalExp exps)
 
 evalBoolExps boolean = boolean
 
-evalBool :: [Fact] -> Boolean -> Bool
-evalBool _ (Equals (Num n) (Num n')) = n == n'
+evalBool :: [Fact] -> Boolean -> Bool3
+evalBool _ (Equals (Num n) (Num n')) = Result (n == n')
 
-evalBool _ (L (Num n) (Num n')) = n < n'
+evalBool _ (L (Num n) (Num n')) = Result (n < n')
 
-evalBool _ (G (Num n) (Num n')) = n > n'
+evalBool _ (G (Num n) (Num n')) = Result (n > n')
 
-evalBool _ (NE (Num n) (Num n')) = n /= n'
+evalBool _ (NE (Num n) (Num n')) = Result (n /= n')
 
-evalBool _ (LE (Num n) (Num n')) = n <= n'
+evalBool _ (LE (Num n) (Num n')) = Result (n <= n')
 
-evalBool _ (GE (Num n) (Num n')) = n >= n'
+evalBool _ (GE (Num n) (Num n')) = Result (n >= n')
 
-evalBool facts boolean@(Atom _ _) = boolean `elem` facts
+evalBool facts boolean@(Atom _ _)
+  | boolean `elem` facts = Result True
+  | otherwise = Unknown
 
-evalBool _ boolean = False
+evalBool _ boolean = Unknown
 
 validExps :: Exp -> Exp -> Bool
 validExps (Func str args) (Func str' args')
@@ -279,9 +283,12 @@ substitute' clause (fact : facts)
 substitute :: Clause -> [Fact] ->  [Clause]
 substitute clause facts = nub (substitute' clause facts)
 
+sat :: Clause -> [Fact] -> Bool
+sat clause facts = null (filter (\b -> ((evalBool facts b) == (Result False))) clause)
+
 deriveRules :: Clause -> [Fact] -> [Clause]
 deriveRules clause facts
-  = map (filter (\boolean -> not (evalBool facts boolean))) clauses
+  = map (filter (\boolean -> (evalBool facts boolean) /= (Result True))) clauses
   where
     clauses = substitute clause facts
 
@@ -312,7 +319,10 @@ resolve' program facts
     (program', facts') = resolveOnce program facts
 
 resolve :: Program -> [Fact] -> Program
-resolve program facts = nub (filter (\x -> not (null x)) (resolve' program facts))
+resolve program facts
+  = filter (\c -> sat c facts) program'
+  where
+    program' = nub (filter (\x -> not (null x)) (resolve' program facts))
 
 ---------------------------------------------------------------------------------------------------
 supportedAllocate =
