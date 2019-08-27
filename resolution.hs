@@ -205,7 +205,7 @@ generateEqualityLookup [] = []
 generateEqualityLookup ((Equals exp1 exp2) : booleans)
   | not (null (processExp exp1 exp2)) = (processExp exp1 exp2) ++ (generateEqualityLookup booleans)
   | otherwise                         = (processExp exp2 exp1) ++ (generateEqualityLookup booleans)
-  
+
 
 generateEqualityLookup (_ : booleans)
   = generateEqualityLookup booleans
@@ -286,27 +286,28 @@ substituteFact clause fact
     clause' = instantiate table clause
     table = generateLookup fact clause
 
-substitute'' :: Clause -> [Fact] -> [Clause]
-substitute'' clause [] = [clause]
-
-substitute'' clause (fact : facts)
-   = (substitute'' clause facts) ++ (substitute'' (substituteFact clause fact) facts)
-
 substitute' :: Clause -> [Fact] -> [Clause]
-substitute' clause facts
-  = substitute'' clause' facts
-  where
-    clause' = instantiate (generateEqualityLookup clause) clause
+substitute' clause [] = [clause]
+
+substitute' clause (fact : facts)
+   = (substitute' clause facts) ++ (substitute' (substituteFact clause fact) facts)
 
 substitute :: Clause -> [Fact] ->  [Clause]
 substitute clause facts = nub (substitute' clause facts)
 
+substituteEquality :: Clause -> Clause
+substituteEquality clause = instantiate (generateEqualityLookup clause) clause
+
 sat :: Clause -> [Fact] -> Bool
 sat clause facts = null (filter (\b -> ((evalBool facts b) == (Result False))) clause)
 
+filterTrue :: [Fact] -> Clause -> Clause
+filterTrue facts clause
+  = filter (\boolean -> (evalBool facts boolean) /= (Result True)) clause
+
 deriveRules :: Clause -> [Fact] -> [Clause]
 deriveRules clause facts
-  = map (filter (\boolean -> (evalBool facts boolean) /= (Result True))) clauses
+  = map (filterTrue facts) clauses
   where
     clauses = substitute clause facts
 
@@ -329,18 +330,22 @@ resolveOnce (clause : clauses) facts
     newFacts = map head (filter isSingleton rules)
     (rules', facts') = resolveOnce clauses (nub (newFacts ++ facts))
 
-resolve' :: Program -> [Fact] -> Program
-resolve' program facts
+resolve'' :: Program -> [Fact] -> Program
+resolve'' program facts
   | (and (map (\x -> x `elem` program) program')) && (facts == facts') = program
-  | otherwise = resolve' program' facts'
+  | otherwise = resolve'' program' facts'
   where
     (program', facts') = resolveOnce program facts
 
-resolve :: Program -> [Fact] -> Program
-resolve program facts
+resolve' :: Program -> [Fact] -> Program
+resolve' program facts
   = filter (\c -> sat c facts) program'
   where
-    program' = nub (filter (\x -> not (null x)) (resolve' program facts))
+    program' = (filter (\x -> not (null x)) (resolve'' program facts))
+
+resolve :: Program -> [Fact] -> Program
+resolve program facts
+  = nub (map (filterTrue facts) (map substituteEquality (resolve' program facts)))
 
 ---------------------------------------------------------------------------------------------------
 supportedAllocate =
