@@ -198,6 +198,22 @@ processExp exp1 exp2
   | validExps exp1 exp2 = processExp' exp1 exp2
   | otherwise = []
 
+
+generateEqualityLookup :: Clause -> LookupTable
+generateEqualityLookup [] = []
+
+generateEqualityLookup ((Equals (Var v) (Num n)) : booleans)
+  = (Var v, Num n) : generateEqualityLookup booleans
+
+generateEqualityLookup ((Equals (Var v) (Const c)) : booleans)
+  = (Var v, Const c) : generateEqualityLookup booleans
+
+generateEqualityLookup ((Equals expr (Var v)) : booleans)
+  = generateEqualityLookup ((Equals (Var v) expr) : booleans)
+  
+generateEqualityLookup (_ : booleans)
+  = generateEqualityLookup booleans
+
 generateLookup :: Fact -> Clause -> LookupTable
 generateLookup _ [] = []
 
@@ -274,11 +290,17 @@ substituteFact clause fact
     clause' = instantiate table clause
     table = generateLookup fact clause
 
-substitute' :: Clause -> [Fact] -> [Clause]
-substitute' clause [] = [clause]
+substitute'' :: Clause -> [Fact] -> [Clause]
+substitute'' clause [] = [clause]
 
-substitute' clause (fact : facts)
-   = (substitute' clause facts) ++ (substitute' (substituteFact clause fact) facts)
+substitute'' clause (fact : facts)
+   = (substitute'' clause facts) ++ (substitute'' (substituteFact clause fact) facts)
+
+substitute' :: Clause -> [Fact] -> [Clause]
+substitute' clause facts
+  = substitute'' clause' facts
+  where
+    clause' = instantiate (generateEqualityLookup clause) clause
 
 substitute :: Clause -> [Fact] ->  [Clause]
 substitute clause facts = nub (substitute' clause facts)
