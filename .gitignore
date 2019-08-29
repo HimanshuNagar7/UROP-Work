@@ -7,7 +7,9 @@
 !practice
 !processLine.py
 !requestScript.sh
-!resolution.hs
 !timingScript.sh
 !RandomRequests.py
+!Resolution.hs
+!CurrentTime.hs
+!Facts.hs
 !.gitignore
