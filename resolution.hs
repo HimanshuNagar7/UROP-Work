@@ -1,5 +1,8 @@
+module Resolution where
+
 import Data.List
 import Data.Maybe
+import CurrentTime
 
 data Exp = Num Int | Const String | Var String | Plus Exp Exp | Minus Exp Exp |
            Mul Exp Exp | Div Exp Exp | Tuple [Exp] | Func String [Exp]
@@ -330,22 +333,33 @@ resolveOnce (clause : clauses) facts
     newFacts = map head (filter isSingleton rules)
     (rules', facts') = resolveOnce clauses (nub (newFacts ++ facts))
 
-resolve'' :: Program -> [Fact] -> Program
-resolve'' program facts
+resolve''' :: Program -> [Fact] -> Program
+resolve''' program facts
   | (and (map (\x -> x `elem` program) program')) && (facts == facts') = program
-  | otherwise = resolve'' program' facts'
+  | otherwise = resolve''' program' facts'
   where
     (program', facts') = resolveOnce program facts
 
-resolve' :: Program -> [Fact] -> Program
-resolve' program facts
+resolve'' :: Program -> [Fact] -> Program
+resolve'' program facts
   = filter (\c -> sat c facts) program'
   where
-    program' = (filter (\x -> not (null x)) (resolve'' program facts))
+    program' = (filter (\x -> not (null x)) (resolve''' program facts))
+
+resolve' :: Program -> [Fact] -> Program
+resolve' program facts
+  = nub (map (filterTrue facts) (map substituteEquality (resolve'' program facts)))
+
+isCurrentTime :: Boolean -> Bool
+isCurrentTime (Atom str [Num t]) = not ((str == timeWrapper) && (t < currentTime))
+
+isCurrentTime _ = True
+
+isCurrentClause :: Clause -> Bool
+isCurrentClause clause = and (map isCurrentTime clause)
 
 resolve :: Program -> [Fact] -> Program
-resolve program facts
-  = nub (map (filterTrue facts) (map substituteEquality (resolve' program facts)))
+resolve program facts = filter isCurrentClause (resolve' program facts)
 
 ---------------------------------------------------------------------------------------------------
 supportedAllocate =
@@ -417,3 +431,7 @@ program = [supportedAllocate,
           antecedentClause,
           constraint1,
           constraint2]
+----------------------------------------------------------------------------------------------------------
+main :: IO ()
+main = do
+  putStrLn (showProg (resolve program facts1))
