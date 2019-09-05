@@ -3,6 +3,7 @@ module Resolution where
 import Data.List
 import Data.Maybe
 import DataTypes
+import CurrentTime
 import Program
 import Facts
 
@@ -368,56 +369,61 @@ getTimes ((Atom str [expr]) : booleans)
 
 getTimes (_ : booleans) = getTimes booleans
 
-isCurrentTime ::  Int-> Clause -> Exp -> Bool
-isCurrentTime currentTime _ (Num n) = n >= currentTime
+isCurrentTime ::  Clause -> Exp -> Bool
+isCurrentTime  _ (Num n) = n >= currentTime
 
-isCurrentTime currentTime [] _ = True
+isCurrentTime  [] _ = True
 
-isCurrentTime currentTime clause (Var v)  = isCurrentTime currentTime clause (Plus (Var v) (Num 0))
+isCurrentTime  clause (Var v)  = isCurrentTime  clause (Plus (Var v) (Num 0))
 
-isCurrentTime currentTime ((G expr1 expr2) : booleans) expr
-  = isCurrentTime currentTime ((L expr2 expr1) : booleans) expr
+isCurrentTime  ((G expr1 expr2) : booleans) expr
+  = isCurrentTime  ((L expr2 expr1) : booleans) expr
 
-isCurrentTime currentTime ((GE expr1 expr2) : booleans) expr
-  = isCurrentTime currentTime ((LE expr2 expr1) : booleans) expr
+isCurrentTime  ((GE expr1 expr2) : booleans) expr
+  = isCurrentTime  ((LE expr2 expr1) : booleans) expr
 
-isCurrentTime currentTime ((LE expr1 expr2) : booleans) expr
-  = isCurrentTime currentTime ((L expr1 (evalExp (Plus expr2 (Num 1)))) : booleans) expr
+isCurrentTime  ((LE expr1 expr2) : booleans) expr
+  = isCurrentTime  ((L expr1 (evalExp (Plus expr2 (Num 1)))) : booleans) expr
 
-isCurrentTime currentTime ((L (Var v') (Num n)) : booleans) expr@(Plus (Var v) (Num a))
-  | v == v' = ((n + a)  > currentTime) && (isCurrentTime currentTime booleans expr)
-  | otherwise = isCurrentTime currentTime booleans expr
+isCurrentTime  ((L (Var v') (Num n)) : booleans) expr@(Plus (Var v) (Num a))
+  | v == v' = ((n + a)  > currentTime) && (isCurrentTime  booleans expr)
+  | otherwise = isCurrentTime  booleans expr
 
-isCurrentTime currentTime ((L (Var v') (Num n)) : booleans) expr@(Minus (Var v) (Num a))
-  | v == v' = ((n - a)  > currentTime) && (isCurrentTime currentTime booleans expr)
-  | otherwise = isCurrentTime currentTime booleans expr
+isCurrentTime  ((L (Var v') (Num n)) : booleans) expr@(Minus (Var v) (Num a))
+  | v == v' = ((n - a)  > currentTime) && (isCurrentTime  booleans expr)
+  | otherwise = isCurrentTime  booleans expr
 
-isCurrentTime currentTime ((L (Plus (Var v') (Num b)) (Num n)) : booleans) expr@(Plus (Var v) (Num a))
-  | v == v' = ((n + a - b)  > currentTime) && (isCurrentTime currentTime booleans expr)
-  | otherwise = isCurrentTime currentTime booleans expr
+isCurrentTime  ((L (Plus (Var v') (Num b)) (Num n)) : booleans) expr@(Plus (Var v) (Num a))
+  | v == v' = ((n + a - b)  > currentTime) && (isCurrentTime  booleans expr)
+  | otherwise = isCurrentTime  booleans expr
 
-isCurrentTime currentTime ((L (Plus (Var v') (Num b)) (Num n)) : booleans) expr@(Minus (Var v) (Num a))
-  | v == v' = ((n - a - b)  > currentTime) && (isCurrentTime currentTime booleans expr)
-  | otherwise = isCurrentTime currentTime booleans expr
+isCurrentTime  ((L (Plus (Var v') (Num b)) (Num n)) : booleans) expr@(Minus (Var v) (Num a))
+  | v == v' = ((n - a - b)  > currentTime) && (isCurrentTime  booleans expr)
+  | otherwise = isCurrentTime  booleans expr
 
-isCurrentTime currentTime ((L (Minus (Var v') (Num b)) (Num n)) : booleans) expr@(Plus (Var v) (Num a))
-  | v == v' = ((n + a + b)  > currentTime) && (isCurrentTime currentTime booleans expr)
-  | otherwise = isCurrentTime currentTime booleans expr
+isCurrentTime  ((L (Minus (Var v') (Num b)) (Num n)) : booleans) expr@(Plus (Var v) (Num a))
+  | v == v' = ((n + a + b)  > currentTime) && (isCurrentTime  booleans expr)
+  | otherwise = isCurrentTime  booleans expr
 
-isCurrentTime currentTime ((L (Minus (Var v') (Num b)) (Num n)) : booleans) expr@(Minus (Var v) (Num a))
-  | v == v' = ((n - a + b)  > currentTime) && (isCurrentTime currentTime booleans expr)
-  | otherwise = isCurrentTime currentTime booleans expr
+isCurrentTime  ((L (Minus (Var v') (Num b)) (Num n)) : booleans) expr@(Minus (Var v) (Num a))
+  | v == v' = ((n - a + b)  > currentTime) && (isCurrentTime  booleans expr)
+  | otherwise = isCurrentTime  booleans expr
 
-isCurrentTime currentTime (_ : booleans) expr = isCurrentTime currentTime booleans expr
+isCurrentTime  (_ : booleans) expr = isCurrentTime  booleans expr
 
+isCurrentClause :: Clause -> Bool
+isCurrentClause clause
+  = all (isCurrentTime  clause) (getTimes clause)
 
-
-isCurrentClause :: Int -> Clause -> Bool
-isCurrentClause currentTime clause
-  = all (isCurrentTime currentTime clause) (getTimes clause)
-
-resolve :: Program -> [Fact] -> Int -> Program
-resolve program facts currentTime
-  = filter (isCurrentClause currentTime) (resolve' program facts)
+resolve :: Program -> [Fact] -> Program
+resolve program facts
+  = filter isCurrentClause (resolve' program facts)
 
 ---------------------------------------------------------------------------------------------------
+
+main :: IO ()
+main = do
+  putStrLn "Resolved Haskell Program. Please replace the program in Program.hs with this."
+  putStrLn ('\n' : (show (resolve program facts)))
+  putStrLn "\nTranslated into ASP. Please append this to the current ASP file."
+  putStrLn ('\n' : (showProg (resolve program facts)))
