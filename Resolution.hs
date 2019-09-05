@@ -2,26 +2,9 @@ module Resolution where
 
 import Data.List
 import Data.Maybe
-import CurrentTime
-
-data Exp = Num Int | Const String | Var String | Plus Exp Exp | Minus Exp Exp |
-           Mul Exp Exp | Div Exp Exp | Tuple [Exp] | Func String [Exp]
-           deriving (Show, Eq)
-
-
-data Boolean = Atom String [Exp] | Equals Exp Exp | G Exp Exp |
-               L Exp Exp | NE Exp Exp | GE Exp Exp | LE Exp Exp | F
-               deriving (Show, Eq)
-
-data Bool3 = Result Bool | Unknown deriving (Show, Eq)
-
-type Fact = Boolean
-
-type Clause = [Boolean]
-
-type LookupTable = [(Exp, Exp)]
-
-type Program = [Clause]
+import DataTypes
+import Program
+import Facts
 
 timeWrapper :: String
 timeWrapper = "time"
@@ -63,6 +46,8 @@ showBool (LE exp1 exp2) = (showExp exp1) ++ " <= " ++ (showExp exp2)
 
 showBool (GE exp1 exp2) = (showExp exp1) ++ " >= " ++ (showExp exp2)
 
+showBool (Not bool) = "not " ++ (showBool bool)
+
 showBool _ = ""
 
 showClause' :: Clause -> String
@@ -84,7 +69,10 @@ showProg :: Program -> String
 showProg program
   = foldl1 (\clause1 clause2 -> clause1 ++ "\n" ++ clause2) (map showClause program)
 
+getBool :: Bool3 -> Bool
+getBool (Result bool) = bool
 
+getBool Unknown = error "Boolean is unknown"
 
 evalExp :: Exp -> Exp
 evalExp (Plus (Num n) (Num n')) = Num (n + n')
@@ -114,6 +102,8 @@ evalBoolExps (GE exp1 exp2) = GE (evalExp exp1) (evalExp exp2)
 
 evalBoolExps (Atom str exps) = Atom str (map evalExp exps)
 
+evalBoolExps (Not bool) = Not (evalBoolExps bool)
+
 evalBoolExps boolean = boolean
 
 evalClauseExps :: Clause -> Clause
@@ -135,6 +125,10 @@ evalBool _ (GE (Num n) (Num n')) = Result (n >= n')
 evalBool facts boolean@(Atom _ _)
   | boolean `elem` facts = Result True
   | otherwise = Unknown
+
+evalBool facts (Not bool)
+  | evalBool facts bool == Unknown = Unknown
+  | otherwise                      = Result (not (getBool (evalBool facts bool)))
 
 evalBool _ boolean = Unknown
 
@@ -159,6 +153,10 @@ validExps (Tuple args) (Tuple args')
 validExps (Tuple _) _ = False
 
 validExps _ (Tuple _) = False
+
+validExps (Const c) (Const c') = c == c'
+
+validExps (Num n) (Num n') = n == n'
 
 validExps _ _ = True
 
@@ -229,6 +227,9 @@ generateLookup fact@(Atom str args) ((Atom str' args') : booleans)
 generateLookup fact@(Atom str args) ( _ : booleans)
   =  generateLookup fact booleans
 
+generateLookup fact ((Not bool) : booleans)
+  = generateLookup fact (bool : booleans)
+
 generateLookup _ _ = []
 
 instantiateExp :: LookupTable -> Exp -> Exp
@@ -280,6 +281,8 @@ instantiateBoolean table (GE exp1 exp2)
 
 instantiateBoolean table (LE exp1 exp2)
   = LE (instantiateExp table exp1) (instantiateExp table exp2)
+
+instantiateBoolean table (Not bool) = Not (instantiateBoolean table bool)
 
 instantiateBoolean _ F = F
 
@@ -354,137 +357,67 @@ resolve'' program facts
 resolve' :: Program -> [Fact] -> Program
 resolve' program facts
   = nub (map (filterTrue facts) (map evalClauseExps (map substituteEquality (resolve'' program facts))))
-  
-  
+
+
 getTimes :: Clause -> [Exp]
 getTimes [] = []
 
 getTimes ((Atom str [expr]) : booleans)
   | str == timeWrapper = expr : (getTimes booleans)
   | otherwise          = getTimes booleans
-    
+
 getTimes (_ : booleans) = getTimes booleans
 
-isCurrentTime ::  Clause -> Exp -> Bool
-isCurrentTime  _ (Num n) = n >= currentTime
+isCurrentTime ::  Int-> Clause -> Exp -> Bool
+isCurrentTime currentTime _ (Num n) = n >= currentTime
 
-isCurrentTime [] _ = True
+isCurrentTime currentTime [] _ = True
 
-isCurrentTime clause (Var v)  = isCurrentTime clause (Plus (Var v) (Num 0)) 
+isCurrentTime currentTime clause (Var v)  = isCurrentTime currentTime clause (Plus (Var v) (Num 0))
 
-isCurrentTime ((G expr1 expr2) : booleans) expr 
-  = isCurrentTime ((L expr2 expr1) : booleans) expr
-  
-isCurrentTime ((GE expr1 expr2) : booleans) expr 
-  = isCurrentTime ((LE expr2 expr1) : booleans) expr
-  
-isCurrentTime ((LE expr1 expr2) : booleans) expr 
-  = isCurrentTime ((L expr1 (evalExp (Plus expr2 (Num 1)))) : booleans) expr
-  
-isCurrentTime ((L (Var v') (Num n)) : booleans) expr@(Plus (Var v) (Num a)) 
-  | v == v' = ((n + a)  > currentTime) && (isCurrentTime booleans expr) 
-  | otherwise = isCurrentTime booleans expr
-  
-isCurrentTime ((L (Var v') (Num n)) : booleans) expr@(Minus (Var v) (Num a)) 
-  | v == v' = ((n - a)  > currentTime) && (isCurrentTime booleans expr) 
-  | otherwise = isCurrentTime booleans expr
-  
-isCurrentTime ((L (Plus (Var v') (Num b)) (Num n)) : booleans) expr@(Plus (Var v) (Num a)) 
-  | v == v' = ((n + a - b)  > currentTime) && (isCurrentTime booleans expr) 
-  | otherwise = isCurrentTime booleans expr
-  
-isCurrentTime ((L (Plus (Var v') (Num b)) (Num n)) : booleans) expr@(Minus (Var v) (Num a)) 
-  | v == v' = ((n - a - b)  > currentTime) && (isCurrentTime booleans expr) 
-  | otherwise = isCurrentTime booleans expr
-  
-isCurrentTime ((L (Minus (Var v') (Num b)) (Num n)) : booleans) expr@(Plus (Var v) (Num a)) 
-  | v == v' = ((n + a + b)  > currentTime) && (isCurrentTime booleans expr) 
-  | otherwise = isCurrentTime booleans expr
-  
-isCurrentTime ((L (Minus (Var v') (Num b)) (Num n)) : booleans) expr@(Minus (Var v) (Num a)) 
-  | v == v' = ((n - a + b)  > currentTime) && (isCurrentTime booleans expr) 
-  | otherwise = isCurrentTime booleans expr
-  
-isCurrentTime _ _  = True
-  
-  
-isCurrentClause :: Clause -> Bool
-isCurrentClause clause = all (isCurrentTime clause) (getTimes clause)
+isCurrentTime currentTime ((G expr1 expr2) : booleans) expr
+  = isCurrentTime currentTime ((L expr2 expr1) : booleans) expr
 
-resolve :: Program -> [Fact] -> Program
-resolve program facts = filter isCurrentClause (resolve' program facts)
+isCurrentTime currentTime ((GE expr1 expr2) : booleans) expr
+  = isCurrentTime currentTime ((LE expr2 expr1) : booleans) expr
+
+isCurrentTime currentTime ((LE expr1 expr2) : booleans) expr
+  = isCurrentTime currentTime ((L expr1 (evalExp (Plus expr2 (Num 1)))) : booleans) expr
+
+isCurrentTime currentTime ((L (Var v') (Num n)) : booleans) expr@(Plus (Var v) (Num a))
+  | v == v' = ((n + a)  > currentTime) && (isCurrentTime currentTime booleans expr)
+  | otherwise = isCurrentTime currentTime booleans expr
+
+isCurrentTime currentTime ((L (Var v') (Num n)) : booleans) expr@(Minus (Var v) (Num a))
+  | v == v' = ((n - a)  > currentTime) && (isCurrentTime currentTime booleans expr)
+  | otherwise = isCurrentTime currentTime booleans expr
+
+isCurrentTime currentTime ((L (Plus (Var v') (Num b)) (Num n)) : booleans) expr@(Plus (Var v) (Num a))
+  | v == v' = ((n + a - b)  > currentTime) && (isCurrentTime currentTime booleans expr)
+  | otherwise = isCurrentTime currentTime booleans expr
+
+isCurrentTime currentTime ((L (Plus (Var v') (Num b)) (Num n)) : booleans) expr@(Minus (Var v) (Num a))
+  | v == v' = ((n - a - b)  > currentTime) && (isCurrentTime currentTime booleans expr)
+  | otherwise = isCurrentTime currentTime booleans expr
+
+isCurrentTime currentTime ((L (Minus (Var v') (Num b)) (Num n)) : booleans) expr@(Plus (Var v) (Num a))
+  | v == v' = ((n + a + b)  > currentTime) && (isCurrentTime currentTime booleans expr)
+  | otherwise = isCurrentTime currentTime booleans expr
+
+isCurrentTime currentTime ((L (Minus (Var v') (Num b)) (Num n)) : booleans) expr@(Minus (Var v) (Num a))
+  | v == v' = ((n - a + b)  > currentTime) && (isCurrentTime currentTime booleans expr)
+  | otherwise = isCurrentTime currentTime booleans expr
+
+isCurrentTime currentTime (_ : booleans) expr = isCurrentTime currentTime booleans expr
+
+
+
+isCurrentClause :: Int -> Clause -> Bool
+isCurrentClause currentTime clause
+  = all (isCurrentTime currentTime clause) (getTimes clause)
+
+resolve :: Program -> [Fact] -> Int -> Program
+resolve program facts currentTime
+  = filter (isCurrentClause currentTime) (resolve' program facts)
 
 ---------------------------------------------------------------------------------------------------
-supportedAllocate =
-  [Atom "supported"[Func "allocate" [Var "Cust", Var "Item", Var "N", Var "T1"], Var "T"],
-  Atom "ant" [Num 1, Tuple [Var "T1", Var "Cust", Var "Item"], Var "T1"],
-  Atom "holds" [Func "available" [Var "Item", Var "N"], Minus (Var "T") (Num 1)],
-  L (Var "T1")  (Var "T"), L (Var "T") (Plus (Var "T1") (Num 3)),
-  Atom "time" [Plus (Var "T") (Num 1)], Atom "number" [Var "N"]]
-
-supportedApologize =
-  [Atom "supported" [Func "apologize" [Var "Cust", Var "Item"], Var "T"],
-  Atom "ant" [Num 1, Tuple [Var "T1", Var "Cust", Var "Item"], Var "T1"],
-  Equals (Var "T")  (Plus (Var "T1") (Num 4)), Atom "time" [Var "T"]]
-
-supportedProcess =
-  [Atom "supported" [Func "process" [Var "Cust", Var "Item", Var "T1"], Var "T"],
-  Atom "ant" [Num 1, Tuple [Var "T1", Var "Cust", Var "Item"], Var "T1"],
-  L (Var "T1")  (Minus (Var "T") (Num 1)), L (Var "T") (Plus (Var "T1") (Num 4)),
-  Atom "time" [Var "T"],
-  Atom "happens" [Func "allocate" [Var "Cust", Var "Item", Var "N", Var "T1"], Minus (Var "T") (Num 1)]]
-
-consequentClause1 =
-  [Atom "cons" [Num 1, Tuple [Var "T", Var "Cust", Var "Item"], Var "T", Plus (Var "T1") (Num 1)],
-  Atom "ant" [Num 1, Tuple [Var "T", Var "Cust", Var "Item"], Var "T"],
-  Atom "holds" [Func "available" [Var "Item", Var "N"], Minus (Var "T1") (Num 1)],
-  Atom "happens" [Func "allocate" [Var "Cust", Var "Item", Var "N", Var "T"], Var "T1"],
-  Atom "happens" [Func "process" [Var "Cust", Var "Item", Var "T"], Plus (Var "T1") (Num 1)],
-  Atom "time" [Plus (Var "T1") (Num 1)], L (Var "T") (Var "T1"), L (Var "T1") (Plus (Var "T") (Num 3))]
-
-consequentClause2 =
-  [Atom "cons" [Num 1, Tuple [Var "T", Var "Cust", Var "Item"], Var "T", Var "T3"],
-  Atom "ant" [Num 1, Tuple [Var "T", Var "Cust", Var "Item"], Var "T"],
-  Atom "happens" [Func "apologize" [Var "Cust", Var "Item"], Var "T3"],
-  Equals (Var "T3") (Plus (Var "T") (Num 4)), Atom "time" [Var "T3"]]
-
-antecedentClause =
-  [Atom "ant" [Num 1, Tuple [Var "Ts", Var "Cust", Var "Item"], Var "Ts"],
-  Atom "happens" [Func "request" [Var "Cust", Var "Item"], Var "Ts"],
-  Atom "time" [Var "Ts"]]
-
-constraint1 =
-  [F,
-  Atom "happens" [Func "allocate" [Var "Cust", Var "Item", Var "N", Var "T1"], Plus (Var "T") (Num 1)],
-  Atom "holds" [Func "available" [Var "Item", Num 0], Var "T"]]
-
-constraint2 =
-  [F,
-  Atom "holds" [Func "available" [Var "Item", Var "N"], Var "T"],
-  Atom "holds" [Func "available" [Var "Item", Var "N1"], Var "T"],
-  L (Var "N") (Var "N1")]
-
-facts1 =
-  [Atom "happens" [Func "request" [Const "c2", Const "b1"], Num 1],
-  Atom "time" [Num 1], Atom "time" [Num 2], Atom "time" [Num 3],
-  Atom "holds" [Func "available" [Const "b1", Num 4], Num 0]]
-
-facts2 =
-  [Atom "happens" [Func "request" [Const "c1", Const "b1"], Num 2],
-  Atom "happens" [Func "allocate" [Const "c2", Const "b1", Num 4, Num 1], Num 2],
-  Atom "time" [Num 2], Atom "time" [Num 3], Atom "time" [Num 4],
-  Atom "holds" [Func "available" [Const "b1", Num 4], Num 1]]
-
-
-program = [supportedAllocate,
-          supportedProcess,
-          supportedApologize,
-          consequentClause1,
-          consequentClause2,
-          antecedentClause,
-          constraint1,
-          constraint2]
-----------------------------------------------------------------------------------------------------------
-main :: IO ()
-main = do
-  putStrLn (showProg (resolve program facts1))

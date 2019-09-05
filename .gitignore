@@ -12,4 +12,6 @@
 !Resolution.hs
 !CurrentTime.hs
 !Facts.hs
+!DataTypes.hs
+!Program.hs
 !.gitignore
