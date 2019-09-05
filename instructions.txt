@@ -6,6 +6,23 @@ For values of r (number of requests) between 1 and maximum request count in step
 3. Step 2 is repeated 15 times to reduce effects of noise.
 After the data is generated, I used Jupyter Notebook to plot the results (x axis: r, y axis: length of grounding). Using python file called plotRequestData.py 
 
+requestScript.sh:
+
+#!/bin/bash
+echo requestCount,groundLength > requestData.csv
+maxTime=$3
+noCust=$1
+noItem=$2
+maxRequests=$4
+for (( r=1; r<=maxRequests; r++ ))
+do
+  for x in {1..15}
+  do
+    python ExponentialRequests.py $noCust $noItem $maxTime $r $x  
+    LINES=$(./clingo --text --const maxTime=$maxTime --const noItem=$noItem --const noCust=$noCust allocTimeBookstore.lp happensEvents.lp | wc -l)
+    echo $r,$LINES >> requestData.csv
+  done
+done
 
 
 Running experiment for effect of item count on grounding:
@@ -16,6 +33,23 @@ For values of i (number of items) between 1 and maximum number of items in steps
 3. Step 2 is repeated 15 times to reduce effects of noise.
 After the data is generated, I used Jupyter Notebook to plot the results (x axis: i, y axis: length of grounding) Using python file called plotItemData.py 
 
+itemScript.sh
+
+#!/bin/bash
+echo itemCount,groundLength > itemData.csv
+noCust=$1
+maxItem=$2
+maxTime=$3
+avgNoRequests=$4
+for (( i=1; i<=maxItem; i++))
+do
+  for x in {1..15}
+  do
+    python ExponentialRequests.py $noCust $i $maxTime $avgNoRequests $x  
+    LINES=$(./clingo --text --const maxTime=$maxTime --const noItem=$i --const noCust=$noCust allocTimeBookstore.lp happensEvents.lp | wc -l)
+    echo  $i,$LINES >> itemData.csv
+  done
+done
 
  
 Running experiment for effect of request count on solving time:
@@ -25,6 +59,26 @@ For values of r (number of requests) between 2 and maximum request count in step
 2. Solves the bookstore.lp program with S(r) and outputs the solving time to timeData.csv
 3. Step 2 is repeated 10 times to reduce effects of noise.
 After the data is generated, I used Jupyter Notebook to plot the results (x axis: r, y axis: solving time) Using python file called plotTimeData.py 
+
+timingScript.sh
+
+#!/bin/bash
+echo requestCount, time > timeData.csv
+noCust=$1
+noItem=$2
+maxTime=$3
+maxRequests=$4
+for (( r=2; r <= maxRequests; r+=2))
+do
+  echo $r
+  for x in {1..10}
+  do
+    python RandomRequests.py $noCust $noItem $maxTime $r $x
+    ./clingo --opt-mode=optN -q --const noItem=$noItem --const noCust=$noCust --const maxTime=$maxTime allocTimeBookstore.lp happensEvents.lp | tail -2 | head -1 > line.txt
+    TIME=$(python processLine.py)
+    echo  $r,$TIME >> timeData.csv
+  done
+done
 
 
 All scripts modify the events file happensEvents.lp directly. 
