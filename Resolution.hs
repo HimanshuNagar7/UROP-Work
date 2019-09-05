@@ -423,7 +423,7 @@ resolve program facts
 
 main :: IO ()
 main = do
-  putStrLn "Resolved Haskell Program. Please replace the program in Program.hs with this."
+  putStrLn "\nResolved Haskell Program. Please replace the program in Program.hs with this."
   putStrLn ('\n' : (show (resolve program facts)))
   putStrLn "\nTranslated into ASP. Please append this to the current ASP file."
   putStrLn ('\n' : (showProg (resolve program facts)))
