@@ -14,5 +14,6 @@
 !Facts.hs
 !DataTypes.hs
 !Program.hs
+!loopScript.sh
 !.gitignore
 !program.lp

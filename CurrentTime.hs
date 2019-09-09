@@ -1,4 +1,4 @@
 module CurrentTime where
 
 currentTime :: Int
-currentTime = 1
+currentTime = 3
